@@ -4,47 +4,102 @@ import ColumnContainer from "./ColumnContainer";
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove } from "@dnd-kit/sortable";
 import { createPortal } from "react-dom";
+import TaskCard from "./TaskCard";
 
 const BackBoard = () => {
   const [columns, setColumns] = useState([]);
   const columnsId = useMemo(() => columns.map((col) => col.id), [columns]);
-  const [activeCol, setActiveCol] = useState("");
-  const [tasks, setTasks] = useState([])
+  const [activeCol, setActiveCol] = useState(null);
+  const [tasks, setTasks] = useState([]);
+  const [activeTask, setActiveTask] = useState(null);
 
   const sensors = useSensors(useSensor(PointerSensor, {
     activationConstraint: {
       distance: 3,
-    },}))
-
+    },
+  }));
 
   const generateId = () => {
     return Math.floor(Math.random() * 10001);
   };
 
   const onDragStart = (event) => {
-    console.log("drag start", event);
-    if(event.active.data.current.type === "Column"){
-      setActiveCol(event.active.data.current.column)
+    if (event.active.data.current?.type === "Column") {
+      setActiveCol(event.active.data.current.column);
       return;
     }
-  }
+    if (event.active.data.current?.type === "Task") {
+      setActiveTask(event.active.data.current.task);
+      return;
+    }
+  };
 
   const onDragEnd = (event) => {
-    const {active, over} = event;
-    if (!over) return ;
-    const activeColId = active.id;
-    const overColId = over.id;
+    const { active, over } = event;
+    setActiveCol(null);
+    setActiveTask(null);
+    if (!over) return;
 
-    if (activeColId === overColId) return;
+    if (active.data.current?.type === "Column" && over.data.current?.type === "Column") {
+      const activeColId = active.id;
+      const overColId = over.id;
 
-    setColumns(columns => {
-      const activeColIndex = columns.findIndex((col) => col.id === activeColId);
+      if (activeColId === overColId) return;
 
-      const overColIndex = columns.findIndex((col) => col.id === overColId);
+      setColumns((columns) => {
+        const activeColIndex = columns.findIndex((col) => col.id === activeColId);
+        const overColIndex = columns.findIndex((col) => col.id === overColId);
+        return arrayMove(columns, activeColIndex, overColIndex);
+      });
+    }
 
-      return arrayMove(columns, activeColIndex, overColIndex)
-    })
-  }
+    if (active.data.current?.type === "Task" && over.data.current?.type === "Task") {
+      const activeTaskId = active.id;
+      const overTaskId = over.id;
+
+      if (activeTaskId === overTaskId) return;
+
+      setTasks((tasks) => {
+        const activeTaskIndex = tasks.findIndex((t) => t.id === activeTaskId);
+        const overTaskIndex = tasks.findIndex((t) => t.id === overTaskId);
+
+        const activeTask = tasks[activeTaskIndex];
+        const overTask = tasks[overTaskIndex];
+
+        if (activeTask.columnId !== overTask.columnId) {
+          activeTask.columnId = overTask.columnId;
+        }
+
+        return arrayMove(tasks, activeTaskIndex, overTaskIndex);
+      });
+    }
+  };
+
+  const onDragOver = (event) => {
+    const { active, over } = event;
+    if (!over) return;
+
+    if (active.data.current?.type === "Task" && over.data.current?.type === "Task") {
+      const activeTaskId = active.id;
+      const overTaskId = over.id;
+
+      if (activeTaskId === overTaskId) return;
+
+      setTasks((tasks) => {
+        const activeTaskIndex = tasks.findIndex((t) => t.id === activeTaskId);
+        const overTaskIndex = tasks.findIndex((t) => t.id === overTaskId);
+
+        const activeTask = tasks[activeTaskIndex];
+        const overTask = tasks[overTaskIndex];
+
+        if (activeTask.columnId !== overTask.columnId) {
+          activeTask.columnId = overTask.columnId;
+        }
+
+        return arrayMove(tasks, activeTaskIndex, overTaskIndex);
+      });
+    }
+  };
 
   const createNewColumn = () => {
     const newColumnTitle = `Column ${columns.length + 1}`;
@@ -58,21 +113,34 @@ const BackBoard = () => {
   };
 
   const updateColumn = (id, title) => {
-    const newColumns = columns.map(col => {
-      if(col.id !== id) return col;
-      return {...col, title};
-    })
-    setColumns(newColumns)
-  }
+    const newColumns = columns.map((col) => {
+      if (col.id !== id) return col;
+      return { ...col, title };
+    });
+    setColumns(newColumns);
+  };
 
   const createTask = (columnId) => {
-    const newTask = {id: generateId(), columnId, content: `Task ${tasks.length + 1}`}
-    setTasks([...tasks, newTask] )
-  }
+    const newTask = { id: generateId(), columnId, content: `Task ${tasks.length + 1}` };
+    setTasks([...tasks, newTask]);
+  };
+
+  const deleteTask = (id) => {
+    const newTasks = tasks.filter((task) => task.id !== id);
+    setTasks(newTasks);
+  };
+
+  const updateTask = (id, content) => {
+    const newTasks = tasks.map((task) => {
+      if (task.id !== id) return task;
+      return { ...task, content };
+    });
+    setTasks(newTasks);
+  };
 
   return (
     <div className="m-auto flex min-h-screen w-full items-center overflow-x-auto overflow-y-hidden px-40">
-      <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+      <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragOver={onDragOver}>
         <div className="m-auto flex gap-2">
           <SortableContext items={columnsId}>
             <div className="flex gap-2">
@@ -83,7 +151,9 @@ const BackBoard = () => {
                   deleteColumn={deleteColumn}
                   updateColumn={updateColumn}
                   createTask={createTask}
-                  tasks={tasks.filter(task => task.columnId === col.id)}
+                  tasks={tasks.filter((task) => task.columnId === col.id)}
+                  deleteTask={deleteTask}
+                  updateTask={updateTask}
                 />
               ))}
             </div>
@@ -96,10 +166,17 @@ const BackBoard = () => {
             Add Column
           </button>
         </div>
-        {createPortal(<DragOverlay>
-          {activeCol && <ColumnContainer column={activeCol} deleteColumn={deleteColumn} updateColumn={updateColumn} createTask={createTask}/>}
-        </DragOverlay>, document.body ) }     
-
+        {createPortal(
+          <DragOverlay>
+            {activeCol && (
+              <div className="bg-mainBackgroundColor opacity-30 w-[350px] h-[500px] rounded-md flex flex-col border-2 border-rose-500"></div>
+            )}
+            {activeTask && (
+              <div className="bg-mainBackgroundColor opacity-30 p-2.5 h-[100px] items-center flex text-left rounded-xl justify-between border-2 border-rose-500 cursor-grab"></div>
+            )}
+          </DragOverlay>,
+          document.body
+        )}
       </DndContext>
     </div>
   );
